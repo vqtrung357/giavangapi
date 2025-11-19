@@ -2,6 +2,21 @@ import axios from "axios";
 import { parseStringPromise } from "xml2js";
 
 export default async function handler(req, res) {
+  // Set CORS headers for all responses
+  const setCORS = () => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept');
+    res.setHeader('Access-Control-Max-Age', '3600');
+  };
+  
+  setCORS();
+  
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+
   try {
     const resp = await axios.get(
       "http://giavang.doji.vn/api/giavang/?api_key=258fbd2a72ce8481089d88c678e9fe4f",
@@ -16,6 +31,7 @@ export default async function handler(req, res) {
     if (!hn || !hcm) throw new Error("Không tìm được giá vàng chi nhánh!");
     const buy = (Number(hn.$.Buy.replace(/[^\d.]/g, "")) + Number(hcm.$.Buy.replace(/[^\d.]/g, ""))) / 2;
     const sell = (Number(hn.$.Sell.replace(/[^\d.]/g, "")) + Number(hcm.$.Sell.replace(/[^\d.]/g, ""))) / 2;
+    setCORS();
     res.status(200).json({
       brand: 'DOJI Avg HN-HCM',
       buy,
@@ -26,6 +42,7 @@ export default async function handler(req, res) {
       ]
     });
   } catch (e) {
+    setCORS();
     res.status(500).json({ error: "Scrape error", detail: String(e) });
   }
 }
