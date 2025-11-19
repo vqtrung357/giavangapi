@@ -1,27 +1,30 @@
 import axios from "axios";
-import * as cheerio from "cheerio";
+import { parseStringPromise } from "xml2js";
 
 export default async function handler(req, res) {
   try {
-    // Lấy trang bảng giá vàng HTML mới
-    const response = await axios.get("https://sjc.com.vn/giavang");
-    const $ = cheerio.load(response.data);
-    // Tìm dòng đầu tiên có chữ 'SJC' (thường là loại vàng SJC 1L)
-    const sjcRow = $("table").first().find("tr").filter(function () {
-      return $(this).find("td").first().text().trim().includes("SJC");
-    }).first();
-    const tds = sjcRow.find("td");
-    if (tds.length < 4) {
-      res.status(500).json({ error: "Không tìm thấy/cấu trúc bảng thay đổi!" });
-      return;
-    }
-    const result = {
-      brand: $(tds[0]).text().trim(),
-      type: $(tds[1]).text().trim(),
-      buy: Number($(tds[2]).text().replace(/[^\d.]/g, "")),
-      sell: Number($(tds[3]).text().replace(/[^\d.]/g, ""))
-    };
-    res.status(200).json(result);
+    const resp = await axios.get(
+      "http://giavang.doji.vn/api/giavang/?api_key=258fbd2a72ce8481089d88c678e9fe4f",
+      { responseType: "text" }
+    );
+    const parsed = await parseStringPromise(resp.data, { explicitArray: false });
+    const rows = parsed.GoldList.DGPlist.Row;
+    const arr = Array.isArray(rows) ? rows : [rows];
+    // Lấy đúng 2 dòng HN lẻ, HCM lẻ
+    const hn = arr.find((r) => r.$.Name && r.$.Name.includes("DOJI HN lẻ"));
+    const hcm = arr.find((r) => r.$.Name && r.$.Name.includes("DOJI HCM lẻ"));
+    if (!hn || !hcm) throw new Error("Không tìm được giá vàng chi nhánh!");
+    const buy = (Number(hn.$.Buy.replace(/[^\d.]/g, "")) + Number(hcm.$.Buy.replace(/[^\d.]/g, ""))) / 2;
+    const sell = (Number(hn.$.Sell.replace(/[^\d.]/g, "")) + Number(hcm.$.Sell.replace(/[^\d.]/g, ""))) / 2;
+    res.status(200).json({
+      brand: 'DOJI Avg HN-HCM',
+      buy,
+      sell,
+      details: [
+        { name: hn.$.Name, buy: Number(hn.$.Buy.replace(/[^\d.]/g, "")), sell: Number(hn.$.Sell.replace(/[^\d.]/g, "")) },
+        { name: hcm.$.Name, buy: Number(hcm.$.Buy.replace(/[^\d.]/g, "")), sell: Number(hcm.$.Sell.replace(/[^\d.]/g, "")) }
+      ]
+    });
   } catch (e) {
     res.status(500).json({ error: "Scrape error", detail: String(e) });
   }
